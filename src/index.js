@@ -8,7 +8,7 @@ import UserModel from './models/user';
 
 const router = Router();
 const saltRounds = 10;
-const mySecret = 'RaulEsUnPendejote';
+const mySecret = 'contraseña1235';
 
 const app = express();
 

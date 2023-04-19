@@ -44,7 +44,43 @@ router.post('/login', async (req, res) => {
 	}
 });
 
-router.get('/app/login', (req, res) => {});
+router.post('/app/login', async (req, res) => {
+	const { name, password } = req.body;
+
+	const userLogin = await UserModel.findOne({ name });
+
+	if (userLogin.length > 0) {
+		userLogin.forEach((usuario) => {
+			bcrypt.compare(password, usuario.pass, (err, isMatch) => {
+				if (!isMatch) {
+					res.status(401).json({ token: null, message: "pendejo 'ta mal" });
+				} else {
+					const token = jwt.sign({ name: usuario.name }, mySecret, {
+						expiresIn: 86400,
+					});
+					res.json({ token });
+				}
+			});
+		});
+	}
+
+	if (userLogin) {
+		const token = jwt.sign(
+			{
+				name: userLogin.name,
+				pass: userLogin.pass,
+			},
+			mySecret,
+			{
+				expiresIn: 60 * 60 * 24,
+			}
+		);
+		const decoded = jwt.verify(token, 'RaulEsUnPendejote');
+		res.json({ token, decoded });
+	} else {
+		res.status(400).send('Credenciales invalidas');
+	}
+});
 
 router.get('/users', async (req, res) => {
 	const response = await UserModel.find();

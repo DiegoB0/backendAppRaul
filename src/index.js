@@ -6,6 +6,7 @@ import jwt from 'jsonwebtoken';
 import morgan from 'morgan';
 import { Server as WebSocketServer } from 'socket.io';
 import db from './connection';
+import LoginModel from './models/login';
 import UserModel from './models/user';
 
 const SOCKETSPORT = 3001;
@@ -44,31 +45,40 @@ db().then(() => console.log('Database connected'));
 router.post('/login', async (req, res) => {
 	const { _id } = req.body;
 
-	const response = await UserModel.findOne({ _id: _id });
+	const loginData = await UserModel.findOne({ _id: _id });
+	try {
+		if (loginData) {
+			const token = jwt.sign(
+				{
+					_id: loginData._id,
+				},
+				mySecret,
+				{
+					expiresIn: 60 * 60 * 24,
+				}
+			);
+			const decoded = jwt.verify(token, mySecret);
+			res.json({ token, decoded });
 
-	if (response) {
-		const token = jwt.sign(
-			{
-				_id: response._id,
-			},
-			mySecret,
-			{
-				expiresIn: 60 * 60 * 24,
-			}
-		);
-		const decoded = jwt.verify(token, mySecret);
-		res.json({ token, decoded });
-
-		io.emit(
-			'data',
-			{
+			io.emit('data', {
 				body: token,
 				decoded,
-			},
-			console.log('Enviado')
-		);
-	} else {
-		res.status(404).send('Si no funciona me corto la tula');
+			});
+
+			const noserie = loginData._id;
+			const name = loginData.name;
+
+			const data = { noserie, name };
+			console.log(data);
+			const login = await LoginModel.create(data);
+			if (login) {
+				res.send({ login });
+			}
+		} else {
+			res.status(404).send('Si no funciona me corto la tula');
+		}
+	} catch (err) {
+		console.log('Nao Nao');
 	}
 });
 
@@ -117,6 +127,11 @@ router.post('/app/login', async (req, res) => {
 
 router.get('/users', async (req, res) => {
 	const response = await UserModel.find();
+	res.send(response);
+});
+
+router.get('/logins', async (req, res) => {
+	const response = await LoginModel.find();
 	res.send(response);
 });
 

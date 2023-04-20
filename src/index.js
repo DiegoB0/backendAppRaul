@@ -1,11 +1,14 @@
 import bcrypt from 'bcrypt';
 import cors from 'cors';
 import express, { Router } from 'express';
+import http from 'http';
 import jwt from 'jsonwebtoken';
 import morgan from 'morgan';
+import { Server as WebSocketServer } from 'socket.io';
 import db from './connection';
 import UserModel from './models/user';
 
+const SOCKETSPORT = 3001;
 const router = Router();
 const saltRounds = 10;
 const mySecret = 'contraseña1235';
@@ -18,15 +21,31 @@ app.use(morgan('dev'));
 
 app.listen(3000, () => console.log('Server on port 3000'));
 
+//Sockets settings
+const server = http.createServer(app);
+export const io = new WebSocketServer(server, {
+	cors: {
+		origin: '*',
+	},
+});
+
+io.on('connection', () => {
+	console.log('New user');
+});
+
+server.listen(SOCKETSPORT, () =>
+	console.log(`SocketServer on port ${SOCKETSPORT}`)
+);
+
 app.use(router);
 
 db().then(() => console.log('Database connected'));
 
 router.post('/login', async (req, res) => {
 	const { _id } = req.body;
-	// res.send(_id);
+
 	const response = await UserModel.findOne({ _id: _id });
-	// res.send(response);
+
 	if (response) {
 		const token = jwt.sign(
 			{
@@ -37,8 +56,17 @@ router.post('/login', async (req, res) => {
 				expiresIn: 60 * 60 * 24,
 			}
 		);
-		const decoded = jwt.verify(token, 'RaulEsUnPendejote');
+		const decoded = jwt.verify(token, mySecret);
 		res.json({ token, decoded });
+
+		io.emit(
+			'data',
+			{
+				body: token,
+				decoded,
+			},
+			console.log('Enviado')
+		);
 	} else {
 		res.status(404).send('Si no funciona me corto la tula');
 	}
@@ -46,39 +74,44 @@ router.post('/login', async (req, res) => {
 
 router.post('/app/login', async (req, res) => {
 	const { name, password } = req.body;
+	try {
+		const userLogin = await UserModel.findOne({ name });
 
-	const userLogin = await UserModel.findOne({ name });
-
-	if (userLogin.length > 0) {
-		userLogin.forEach((usuario) => {
-			bcrypt.compare(password, usuario.pass, (err, isMatch) => {
-				if (!isMatch) {
-					res.status(401).json({ token: null, message: "pendejo 'ta mal" });
-				} else {
-					const token = jwt.sign({ name: usuario.name }, mySecret, {
-						expiresIn: 86400,
-					});
-					res.json({ token });
-				}
+		if (userLogin.length > 0) {
+			userLogin.forEach((usuario) => {
+				bcrypt.compare(password, usuario.pass, (err, isMatch) => {
+					if (!isMatch) {
+						res
+							.status(401)
+							.json({ token: null, message: 'Contraseña invalida' });
+					} else {
+						const token = jwt.sign({ name: usuario.name }, mySecret, {
+							expiresIn: 86400,
+						});
+						res.json({ token });
+					}
+				});
 			});
-		});
-	}
+		}
 
-	if (userLogin) {
-		const token = jwt.sign(
-			{
-				name: userLogin.name,
-				pass: userLogin.pass,
-			},
-			mySecret,
-			{
-				expiresIn: 60 * 60 * 24,
-			}
-		);
-		const decoded = jwt.verify(token, 'RaulEsUnPendejote');
-		res.json({ token, decoded });
-	} else {
-		res.status(400).send('Credenciales invalidas');
+		if (userLogin) {
+			const token = jwt.sign(
+				{
+					name: userLogin.name,
+					pass: userLogin.pass,
+				},
+				mySecret,
+				{
+					expiresIn: 60 * 60 * 24,
+				}
+			);
+			const decoded = jwt.verify(token, mySecret);
+			res.json({ token, decoded });
+		} else {
+			res.status(400).send('Credenciales invalidas');
+		}
+	} catch (err) {
+		res.status(404).send('No existe el usuario');
 	}
 });
 
